@@ -1,0 +1,50 @@
+from flask import Flask, request, jsonify
+import random
+import difflib
+
+app = Flask(__name__)
+
+# 🔹 Base de données des réponses pré-enregistrées
+responses = {
+    ("bonjour", "salut", "coucou", "hello", "yo"): [
+        "Bonjour ! Comment puis-je vous aider ?", "Salut !", "Coucou !",
+        "Hey hey !", "Yo ! Quoi de neuf ?"
+    ],
+    ("comment vas-tu", "ça va", "tu vas bien"): [
+        "Je vais bien, merci ! Et toi ?", "Je suis en pleine forme !",
+        "Ça roule, et toi ?"
+    ],
+    ("raconte-moi une blague", "dis-moi une blague", "tu connais une blague"): [
+        "Pourquoi les plongeurs plongent-ils toujours en arrière ? Parce que sinon ils tombent dans le bateau !",
+        "Pourquoi les maths sont tristes ? Parce qu'elles ont trop de problèmes !"
+    ],
+    ("au revoir", "bye", "à plus", "ciao"): [
+        "Au revoir !", "À bientôt !", "Bye bye !"
+    ]
+}
+
+# 🔍 Fonction pour trouver la meilleure correspondance
+def find_best_match(user_input):
+    """Trouve la meilleure correspondance pour une phrase donnée."""
+    for keys in responses.keys():
+        match = difflib.get_close_matches(user_input, keys, n=1, cutoff=0.6)
+        if match:
+            return keys
+    return None
+
+@app.route("/chat", methods=["POST"])
+def chat():
+    """Route API pour répondre aux questions de l'utilisateur."""
+    data = request.get_json()
+    user_input = data.get("message", "").lower()
+
+    best_match = find_best_match(user_input)
+    if best_match:
+        response_text = random.choice(responses[best_match])
+    else:
+        response_text = "Désolé, je ne comprends pas."
+
+    return jsonify({"response": response_text})
+
+if __name__ == "__main__":
+    app.run(debug=True)
