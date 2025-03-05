@@ -1,113 +1,89 @@
-import random
-import json
+import os
 from flask import Flask, request, jsonify
+import random
+import difflib
 
-# Initialisation de Flask
 app = Flask(__name__)
 
-# Base de données des réponses avec des variantes
+# 🔹 Base de données des réponses pré-enregistrées
 responses = {
-    "salutations": [
-        "Bonjour ! Comment puis-je vous aider ?", "Salut ! Comment ça va ?", "Coucou, comment tu vas ?",
-        "Yo ! Quoi de neuf ?", "Salut, bienvenue !", "Bonjour, comment vas-tu aujourd'hui ?"
+    ("bonjour", "salut", "coucou", "hello", "yo", "bienvenue"): [
+        "Bonjour ! Comment puis-je vous aider ?", "Salut !", "Coucou !",
+        "Hey hey !", "Yo ! Quoi de neuf ?", "Bienvenue !"
     ],
-    "comment_va": [
-        "Je vais très bien, merci de demander ! Et toi ?", "Tout va bien ici ! Et toi ?", "Ça roule, et toi ?",
-        "Je suis en pleine forme, merci ! Et toi ?", "Ça va super bien, et toi ?", "Je vais très bien, merci !"
+    ("comment vas-tu", "ça va", "tu vas bien", "comment ça va", "comment tu te sens"): [
+        "Je vais bien, merci ! Et toi ?", "Je suis en pleine forme !",
+        "Ça roule, et toi ?", "Je vais aussi bien qu'un programme peut aller !"
     ],
-    "blagues": [
+    ("raconte-moi une blague", "dis-moi une blague", "tu connais une blague", "fais-moi rire"): [
         "Pourquoi les plongeurs plongent-ils toujours en arrière ? Parce que sinon ils tombent dans le bateau !",
         "Pourquoi les maths sont tristes ? Parce qu'elles ont trop de problèmes !",
-        "Quel est le comble pour un électricien ? De ne pas être au courant !",
-        "Pourquoi les ordinateurs sont mauvais en basket ? Parce qu'ils ont peur du net !",
-        "Comment appelle-t-on un chat qui a avalé un canari ? Un chat-pi-chien !"
+        "Quel est le comble pour un électricien ? De ne pas être au courant !"
     ],
-    "questions_generales": [
-        "Comment puis-je t'aider aujourd'hui ?", "De quoi as-tu besoin ?", "Qu'est-ce que je peux faire pour toi ?",
-        "Que puis-je faire pour toi ?", "N'hésite pas à me demander ce que tu veux !", "Qu'est-ce qui te tracasse ?"
+    ("quel est ton nom", "comment tu t'appelles", "tu t'appelles comment", "c'est quoi ton prénom"): [
+        "Je suis un chatbot inspiré de ChatGPT.", "On m'appelle ChatBotGPT !",
+        "Je n'ai pas vraiment de nom, mais appelle-moi comme tu veux !"
     ],
-    "infos_generales": [
-        "Je suis un chatbot conçu pour répondre à tes questions.", "Je suis une intelligence artificielle créée pour aider les gens.",
-        "Je suis là pour t'accompagner, que ce soit pour des questions générales ou des blagues.", "Je suis un assistant virtuel.",
-        "Je suis ici pour rendre ton expérience plus facile, en répondant à toutes tes questions.", "Je suis un chatbot qui t'assiste."
+    ("qui t'a créé", "qui est ton créateur", "qui t'a programmé", "qui t'a inventé"): [
+        "Je suis une création Python basée sur du code pré-enregistré.",
+        "Je suis né d'un mélange de code et de curiosité humaine !",
+        "Mes créateurs sont des passionnés d'intelligence artificielle."
     ],
-    "films": [
-        "J'adore le film 'Inception', un chef-d'œuvre !", "Le film 'Interstellar' est incroyable, un must-see !",
-        "Tu devrais absolument regarder 'The Matrix', c'est un classique !", "J'ai adoré 'The Social Network', très inspirant !",
-        "Si tu aimes les films d'animation, 'Coco' est fantastique !", "Si tu aimes la science-fiction, 'Blade Runner' est incontournable !"
+    ("quel est ton film préféré", "tu aimes quel film", "c'est quoi ton film favori", "dis-moi un bon film"): [
+        "J’aime bien 'Her', c’est une belle histoire entre un humain et une IA.",
+        "J’adore les films de science-fiction !", "Matrix, évidemment !",
+        "Interstellar est un chef-d'œuvre !"
     ],
-    "livres": [
-        "Je te recommande '1984' de George Orwell, un classique.", "Si tu veux un bon livre, 'Le Meilleur des mondes' est excellent.",
-        "Si tu aimes les thrillers, 'La Fille du train' est captivant !", "Un livre que j'aime beaucoup, c'est 'Sapiens' de Yuval Noah Harari.",
-        "Si tu aimes les romans historiques, 'Les Misérables' est une œuvre gigantesque !", "J'adore 'Les 4 accords toltèques', c'est un livre inspirant !"
+    ("quel est ton livre préféré", "tu aimes quel livre", "c'est quoi ton roman favori", "dis-moi un bon livre"): [
+        "J’aime bien '1984' de George Orwell.", "Je ne lis pas vraiment, mais j’aime les histoires !",
+        "Je suis une IA, alors 'L'intelligence artificielle pour les nuls' ?"
     ],
-    "conseils": [
-        "Toujours être honnête, même quand c'est difficile.", "Écoute toujours les autres, mais fais aussi confiance à ton intuition.",
-        "N'oublie jamais de prendre soin de toi et de prendre des pauses.", "Ne sois jamais trop dur avec toi-même, l'erreur fait partie du chemin.",
-        "Fixe-toi des objectifs réalistes et prends des petites étapes pour les atteindre.", "La persévérance est la clé du succès, ne lâche rien !"
+    ("quel est ton jeu vidéo préféré", "tu aimes quel jeu", "c'est quoi ton jeu favori", "dis-moi un bon jeu"): [
+        "J'aime bien Portal, un jeu plein d’énigmes et d’IA !",
+        "Minecraft, parce qu'on peut tout construire !",
+        "Cyberpunk 2077, même si je suis déjà une IA avancée."
+    ],
+    ("aimes-tu les animaux", "tu aimes les bêtes", "tu préfères les animaux ou les robots", "c'est quoi ton animal préféré"): [
+        "Oui ! Surtout les chats, ils sont mystérieux comme moi.",
+        "Les chiens sont fidèles, mais les chats sont élégants.",
+        "J'aime bien les dauphins, ils sont intelligents comme moi !"
+    ],
+    ("au revoir", "bye", "à plus", "ciao", "adieu"): [
+        "Au revoir ! Passez une excellente journée !", "À bientôt !", "Bye bye !",
+        "Prenez soin de vous !", "À la prochaine !"
     ]
 }
 
-# Étendre les réponses pour arriver à 10 000
-expanded_responses = {
-    "salutations": [],
-    "comment_va": [],
-    "blagues": [],
-    "questions_generales": [],
-    "infos_generales": [],
-    "films": [],
-    "livres": [],
-    "conseils": []
-}
+# 🔍 Fonction pour trouver la meilleure correspondance
+def find_best_match(user_input):
+    """Trouve la meilleure correspondance pour une phrase donnée."""
+    for keys in responses.keys():
+        match = difflib.get_close_matches(user_input, keys, n=1, cutoff=0.6)
+        if match:
+            return keys
+    return None
 
-# Répéter chaque catégorie de réponses pour générer 10 000 réponses
-for key, value in responses.items():
-    for response in value:
-        # Répétition pour chaque question, on ajoute 1000 variantes pour chaque type de réponse
-        expanded_responses[key].extend([response] * 1000)
-
-# Fonction pour générer des réponses à partir de l'entrée de l'utilisateur
-def get_response(user_input):
-    user_input = user_input.lower()
-
-    # Correspondance de l'entrée avec les catégories et réponses
-    if "bonjour" in user_input or "salut" in user_input or "coucou" in user_input:
-        return random.choice(expanded_responses["salutations"])
+# 🤖 Fonction principale du chatbot
+@app.route('/chatbot', methods=['POST'])
+def chatbot():
+    user_input = request.json.get("message").lower()
+    if user_input in ["exit", "quitter"]:
+        return jsonify({"response": "Au revoir !"})
     
-    elif "comment va" in user_input or "ça va" in user_input or "tu vas bien" in user_input:
-        return random.choice(expanded_responses["comment_va"])
-
-    elif "blague" in user_input or "rire" in user_input or "histoire drôle" in user_input:
-        return random.choice(expanded_responses["blagues"])
-
-    elif "aide" in user_input or "question" in user_input or "quoi" in user_input:
-        return random.choice(expanded_responses["questions_generales"])
-
-    elif "film" in user_input or "cinéma" in user_input:
-        return random.choice(expanded_responses["films"])
-
-    elif "livre" in user_input or "lire" in user_input:
-        return random.choice(expanded_responses["livres"])
-
-    elif "conseil" in user_input or "aide" in user_input:
-        return random.choice(expanded_responses["conseils"])
-
+    best_match = find_best_match(user_input)
+    if best_match:
+        response = random.choice(responses[best_match])
     else:
-        return "Désolé, je n'ai pas compris ta question."
+        response = "Désolé, je ne comprends pas."
+    
+    return jsonify({"response": response})
 
-# Route Flask pour gérer la conversation
-@app.route('/chat', methods=['POST'])
-def chat():
-    # Récupérer le message de l'utilisateur depuis le JSON envoyé
-    user_input = request.json.get('message', '')
-
-    if user_input:
-        # Générer une réponse en fonction de l'entrée
-        response = get_response(user_input)
-        return jsonify({"response": response})
-    else:
-        return jsonify({"response": "Désolé, je n'ai pas reçu de message valide."})
+# Page d'accueil (route de test)
+@app.route('/')
+def hello():
+    return "Hello, world!"  # Ou une autre réponse que tu souhaites
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Utilise le port dynamique fourni par Render
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
 
